@@ -24,6 +24,8 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     # Use `sklearn.model_selection.train_test_split` method call, passing
     # arguments `test_size=args.test_size, random_state=args.seed`.
 
+    x_train, x_test, y_train, y_test = sklearn.model_selection.train_test_split(dataset["data"], dataset["target"], test_size=args.test_size, random_state=args.seed)
+
     # TODO: Process the input columns in the following way:
     #
     # - if a column has only integer values, consider it a categorical column
@@ -41,12 +43,30 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     # and then the real-valued features. To process different dataset columns
     # differently, you can use `sklearn.compose.ColumnTransformer`.
 
+    num_features = int(dataset["data"].shape[1])
+    categorial = []
+    numerical = []
+
+    for feature in range(num_features):
+        column = dataset["data"][:,feature]
+        if np.all((column - column.round()) == 0):
+            categorial.append(feature)
+        else: numerical.append(feature)
+
+    transformer = sklearn.compose.ColumnTransformer([("cat", sklearn.preprocessing.OneHotEncoder(sparse_output=False, handle_unknown="ignore"), categorial),
+                                                     ("num", sklearn.preprocessing.StandardScaler(), numerical)])
+
     # TODO: To the current features, append polynomial features of order 2.
     # If the input values are `[a, b, c, d]`, you should append
     # `[a^2, ab, ac, ad, b^2, bc, bd, c^2, cd, d^2]`. You can generate such polynomial
     # features either manually, or you can employ the provided transformer
     #   sklearn.preprocessing.PolynomialFeatures(2, include_bias=False)
     # which appends such polynomial features of order 2 to the given features.
+
+    pipeline = sklearn.pipeline.Pipeline([
+        ("cat_num", transformer),
+        ("polynom", sklearn.preprocessing.PolynomialFeatures(2, include_bias=False))
+    ])
 
     # TODO: You can wrap all the feature processing steps into one transformer
     # by using `sklearn.pipeline.Pipeline`. Although not strictly needed, it is
@@ -57,8 +77,8 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     # Then transform the training data into `train_data` (with a `transform` call;
     # however, you can combine the two methods into a single `fit_transform` call).
     # Finally, transform testing data to `test_data`.
-    train_data = ...
-    test_data = ...
+    train_data = pipeline.fit_transform(x_train)
+    test_data = pipeline.transform(x_test)
 
     return train_data[:5], test_data[:5]
 

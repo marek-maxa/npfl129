@@ -31,10 +31,12 @@ def main(args: argparse.Namespace) -> tuple[list[float], float, float]:
     # TODO: Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
 
+    data = np.column_stack((data, np.ones(len(data))))
+
     # TODO: Split the dataset into a train set and a test set.
     # Use `sklearn.model_selection.train_test_split` method call, passing
     # arguments `test_size=args.test_size, random_state=args.seed`.
-    train_data, test_data, train_target, test_target = ...
+    train_data, test_data, train_target, test_target = sklearn.model_selection.train_test_split(data, target, test_size=args.test_size, random_state=args.seed)
 
     # Generate initial linear regression weights.
     weights = generator.uniform(size=train_data.shape[1], low=-0.1, high=0.1)
@@ -54,13 +56,34 @@ def main(args: argparse.Namespace) -> tuple[list[float], float, float]:
         # and the SGD update is
         #   weights = weights - args.learning_rate * gradient
 
+        permuted_train_data = train_data[permutation]
+        permuted_train_target = train_target[permutation]
+
+        for batch_num in range(len(permuted_train_data) // args.batch_size):
+            start = batch_num * args.batch_size
+            end = (batch_num + 1) * args.batch_size
+
+            batch = permuted_train_data[start:end]
+            targets = permuted_train_target[start:end]
+
+            errors = batch @ weights - targets
+            gradient = batch.T @ errors / args.batch_size
+
+            regularization = weights.copy()
+            regularization[-1] = 0
+            gradient += args.l2 * regularization
+
+            weights -= args.learning_rate * gradient
+
         # TODO: Append current RMSE on train/test to `train_rmses`/`test_rmses`.
-        train_rmses.append(...)
-        test_rmses.append(...)
+        train_rmses.append(np.sqrt(np.mean((train_data @ weights - train_target) ** 2)))
+        test_rmses.append(np.sqrt(np.mean((test_data @ weights - test_target) ** 2)))
 
     # TODO: Compute into `explicit_rmse` test data RMSE when fitting
     # `sklearn.linear_model.LinearRegression()` on `train_data` (ignoring `args.l2`).
-    explicit_rmse = ...
+    model = sklearn.linear_model.LinearRegression()
+    model.fit(train_data, train_target)
+    explicit_rmse = sklearn.metrics.root_mean_squared_error(test_target, model.predict(test_data))
 
     if args.plot:
         import matplotlib.pyplot as plt
