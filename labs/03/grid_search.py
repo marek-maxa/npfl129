@@ -42,6 +42,8 @@ def main(args: argparse.Namespace) -> float:
     # Use `sklearn.model_selection.train_test_split` method call, passing
     # arguments `test_size=args.test_size, random_state=args.seed`.
 
+    train_data, test_data, train_target, test_target = sklearn.model_selection.train_test_split(dataset.data, dataset.target, test_size=args.test_size, random_state=args.seed)
+
     # TODO: Create a pipeline, which
     # 1. passes the inputs through `sklearn.preprocessing.MinMaxScaler()`,
     # 2. passes the result through `sklearn.preprocessing.PolynomialFeatures()`,
@@ -57,15 +59,31 @@ def main(args: argparse.Namespace) -> float:
     # For the best combination of parameters, compute the test set accuracy.
     #
     # The easiest way is to use `sklearn.model_selection.GridSearchCV`.
-    test_accuracy = ...
+
+    pipeline = sklearn.pipeline.Pipeline([
+        ("scaler", sklearn.preprocessing.MinMaxScaler()),
+        ("poly", sklearn.preprocessing.PolynomialFeatures()),
+        ("model", sklearn.linear_model.LogisticRegression(random_state=args.seed))
+    ])
+
+    grid = {"poly__degree": [1,2],
+            "model__C": [0.01, 1, 100],
+            "model__solver": ["lbfgs", "sag"]}
+    model = sklearn.model_selection.GridSearchCV(estimator=pipeline, 
+                                              param_grid=grid, 
+                                              cv=sklearn.model_selection.StratifiedKFold(n_splits=5))
+
+    model.fit(X=train_data, y=train_target)
+    pred = model.predict(test_data)
+    test_accuracy = sklearn.metrics.accuracy_score(y_true=test_target, y_pred=pred)
 
     # If `model` is a fitted `GridSearchCV`, you can use the following code
     # to show the results of all the hyperparameter values evaluated:
-    #   for rank, accuracy, params in zip(model.cv_results_["rank_test_score"],
-    #                                     model.cv_results_["mean_test_score"],
-    #                                     model.cv_results_["params"]):
-    #       print("Rank: {:2d} Cross-val: {:.1f}%".format(rank, 100 * accuracy),
-    #             *("{}: {:<5}".format(key, value) for key, value in params.items()))
+    for rank, accuracy, params in zip(model.cv_results_["rank_test_score"],
+                                        model.cv_results_["mean_test_score"],
+                                        model.cv_results_["params"]):
+        print("Rank: {:2d} Cross-val: {:.1f}%".format(rank, 100 * accuracy),
+                *("{}: {:<5}".format(key, value) for key, value in params.items()))
 
     # Note that with some hyperparameter values above, the training does not
     # converge in the default limit of 100 epochs and shows `ConvergenceWarning`s.

@@ -40,9 +40,10 @@ def main(args: argparse.Namespace) -> np.ndarray:
     # TODO: Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
 
+    data = np.column_stack((data, np.ones(len(data))))
+
     # Generate initial perceptron weights.
     weights = np.zeros(data.shape[1])
-
     done = False
     while not done:
         permutation = generator.permutation(data.shape[0])
@@ -52,6 +53,17 @@ def main(args: argparse.Namespace) -> np.ndarray:
         # training data iteration, perform the required updates to the `weights`
         # for incorrectly classified examples. If all training instances are
         # correctly classified, set `done=True`, otherwise set `done=False`.
+
+        permuted_data = data[permutation]
+        permuted_target = target[permutation]
+        for sample, label in zip(permuted_data, permuted_target):
+            y = sample @ weights
+            is_wrong = (label * y <= 0)
+
+            weights += is_wrong * label * sample
+
+        if all(permuted_target * (permuted_data @ weights) > 0):
+            done = True
 
         if args.plot and not done:
             import matplotlib.pyplot as plt
