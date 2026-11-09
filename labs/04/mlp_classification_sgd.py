@@ -51,6 +51,15 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
                generator.uniform(size=[args.hidden_layer, args.classes], low=-0.1, high=0.1)]
     biases = [np.zeros(args.hidden_layer), np.zeros(args.classes)]
 
+    def ReLU(x):
+        return np.maximum(x, 0)
+
+    def softmax(z):
+        z -= z.max(axis=1, keepdims=True)
+        np.exp(z, out=z)
+        z /= z.sum(axis=1, keepdims=True)
+        return z
+
     def forward(inputs):
         # TODO: Implement forward propagation, returning *both* the value of the hidden
         # layer and the value of the output layer.
@@ -66,7 +75,11 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
         # in softmax can easily overflow. To avoid it, you should use the fact that
         # $softmax(z) = softmax(z + any_constant)$ and compute $softmax(z) = softmax(z - maximum_of_z)$.
         # That way we only exponentiate values which are non-positive, and overflow does not occur.
-        raise NotImplementedError()
+        
+        hidden_layer = ReLU(inputs @ weights[0] + biases[0])
+        output_layer = softmax(hidden_layer @ weights[1] + biases[1])
+
+        return hidden_layer, output_layer
 
     for epoch in range(args.epochs):
         permutation = generator.permutation(train_data.shape[0])
@@ -88,9 +101,51 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
         # - compute the derivative with respect to the hidden layer input,
         # - compute the derivative with respect to `weights[0]` and `biases[0]`.
 
+        permuted_data = train_data[permutation]
+        permuted_target = train_target[permutation]
+        n_batch = train_data.shape[0] // args.batch_size
+
+        for i in range(n_batch):
+            batch_data = permuted_data[i * args.batch_size : (i + 1) * args.batch_size]
+            batch_target = permuted_target[i * args.batch_size : (i + 1) * args.batch_size]
+
+            # Forward pass
+            hidden_input = batch_data @ weights[0] + biases[0]
+            hidden_output = np.maximum(hidden_input, 0)
+
+            output_input = hidden_output @ weights[1] + biases[1]
+            probs = softmax(output_input)
+
+            # Backpropagation
+            grad_output = probs.copy()
+            grad_output[np.arange(args.batch_size), batch_target] -= 1
+            grad_output /= args.batch_size
+
+            grad_w1 = hidden_output.T @ grad_output
+            grad_b1 = np.sum(grad_output, axis=0)
+
+            grad_hidden = grad_output @ weights[1].T
+            grad_hidden_input = grad_hidden * (hidden_input > 0)
+
+            grad_w0 = batch_data.T @ grad_hidden_input
+            grad_b0 = np.sum(grad_hidden_input, axis=0)
+
+            # SGD update
+            weights[0] -= args.learning_rate * grad_w0
+            weights[1] -= args.learning_rate * grad_w1
+            biases[0] -= args.learning_rate * grad_b0
+            biases[1] -= args.learning_rate * grad_b1
+
         # TODO: After the SGD epoch, measure the accuracy for both the
         # train test and the test set.
-        train_accuracy, test_accuracy = ...
+
+        _, pred = forward(train_data)
+        pred_labels = np.argmax(pred, axis=1)
+        train_accuracy = sklearn.metrics.accuracy_score(train_target, pred_labels)
+
+        _, pred = forward(test_data)
+        pred_labels = np.argmax(pred, axis=1)
+        test_accuracy = sklearn.metrics.accuracy_score(test_target, pred_labels)
 
         print("After epoch {}: train acc {:.1f}%, test acc {:.1f}%".format(
             epoch + 1, 100 * train_accuracy, 100 * test_accuracy))

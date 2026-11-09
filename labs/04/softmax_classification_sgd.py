@@ -52,6 +52,12 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
     # Generate initial model weights.
     weights = generator.uniform(size=[train_data.shape[1], args.classes], low=-0.1, high=0.1)
 
+    def softmax(z):
+        z -= z.max(axis=1, keepdims=True)
+        np.exp(z, out=z)
+        z /= z.sum(axis=1, keepdims=True)
+        return z
+
     for epoch in range(args.epochs):
         permutation = generator.permutation(train_data.shape[0])
 
@@ -64,10 +70,33 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
         # $softmax(z) = softmax(z + any_constant)$ and compute $softmax(z) = softmax(z - maximum_of_z)$.
         # That way we only exponentiate non-positive values, and overflow does not occur.
 
+        permuted_data = train_data[permutation]
+        permuted_target = train_target[permutation]
+        n_batch = train_data.shape[0] // args.batch_size
+
+        for i in range(n_batch):
+            batch_data = permuted_data[i * args.batch_size : (i + 1) * args.batch_size]
+            batch_target = permuted_target[i * args.batch_size : (i + 1) * args.batch_size]
+
+            probabilities = softmax(batch_data @ weights)
+            probabilities[np.arange(args.batch_size), batch_target] -= 1
+
+            grad = batch_data.T @ probabilities / args.batch_size
+            weights -= args.learning_rate * grad
+
         # TODO: After the SGD epoch, measure the average loss and accuracy for both the
         # train test and the test set. The loss is the average MLE loss (i.e., the
         # negative log-likelihood, or cross-entropy loss, or KL loss) per example.
-        train_accuracy, train_loss, test_accuracy, test_loss = ...
+
+        pred = softmax(train_data @ weights)
+        pred_labels = np.argmax(pred, axis=1)
+        train_accuracy = sklearn.metrics.accuracy_score(train_target, pred_labels)
+        train_loss = sklearn.metrics.log_loss(train_target, pred)
+
+        pred = softmax(test_data @ weights)
+        pred_labels = np.argmax(pred, axis=1)
+        test_accuracy = sklearn.metrics.accuracy_score(test_target, pred_labels)
+        test_loss = sklearn.metrics.log_loss(test_target, pred)
 
         print("After epoch {}: train loss {:.4f} acc {:.1f}%, test loss {:.4f} acc {:.1f}%".format(
             epoch + 1, train_loss, 100 * train_accuracy, test_loss, 100 * test_accuracy))
