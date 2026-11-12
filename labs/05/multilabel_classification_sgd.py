@@ -45,7 +45,10 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
     # TODO: The `target` is a list of classes for every input example. Convert
     # it to a dense representation (n-hot encoding) -- for each input example,
     # the target should be vector of `args.classes` binary indicators.
-    target = ...
+    n = len(target_list)
+    target = np.zeros((len(target_list), args.classes), dtype=int)
+    for i in range(n):
+        target[i][target_list[i]] = 1
 
     # Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
@@ -60,18 +63,72 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
     # Generate initial model weights.
     weights = generator.uniform(size=[train_data.shape[1], args.classes], low=-0.1, high=0.1)
 
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
+
+    def loss_gradient(x,y,w):
+        p = sigmoid(x @ w) 
+        return -( y * (1-p) @ x - (1-y) * p @ x)
+
     for epoch in range(args.epochs):
         permutation = generator.permutation(train_data.shape[0])
 
         # TODO: Process the data in the order of `permutation`. For every
         # `args.batch_size` of them, average their gradient, and update the weights.
         # You can assume that `args.batch_size` exactly divides `train_data.shape[0]`.
-        ...
+        permuted_data = train_data[permutation]
+        permuted_target = train_target[permutation]
+        n_batch = int(train_data.shape[0]/args.batch_size)
+
+        for j in range(args.classes):
+            label_target = permuted_target[:,j]
+            label_weights = weights[:,j]
+            for i in range(n_batch):
+                batch_data = permuted_data[i * args.batch_size : (i + 1) * args.batch_size]
+                batch_target = label_target[i * args.batch_size : (i + 1) * args.batch_size]
+                grad = loss_gradient(batch_data, batch_target, label_weights)/args.batch_size
+                label_weights -= args.learning_rate * grad
+            weights[:,j] = label_weights
 
         # TODO: After the SGD epoch, compute the micro-averaged and the
         # macro-averaged F1-score for both the train test and the test set.
         # Compute these scores manually, without using `sklearn.metrics`.
-        train_f1_micro, train_f1_macro, test_f1_micro, test_f1_macro = ...
+        def f1_micro(tp, fp, fn):
+                    return 2*tp/(2*tp + fp + fn)
+
+        def f1(target, pred_labels, num_classes):
+            confusion = np.zeros((num_classes, 2, 2), dtype=int)
+            f1_macro_scores = []
+
+            for j in range(num_classes):
+                diff = pred_labels[:,j] - target[:,j]
+                tp = pred_labels[:,j][diff == 0].sum()
+                fp = diff[diff == 1].size
+                fn = diff[diff == -1].size
+                tn = pred_labels[:,j][diff == 0].size - tp
+                confusion[j, 0, 0] = tp
+                confusion[j, 0, 1] = fp
+                confusion[j, 1, 0] = fn
+                confusion[j, 1, 1] = tn
+                f1_macro_scores.append(f1_micro(tp, fp, fn))
+
+            confusion_all = confusion.sum(axis=0)
+            tp_all = confusion_all[0,0]
+            fp_all = confusion_all[0,1]
+            fn_all = confusion_all[1,0]
+
+            train_f1_micro = f1_micro(tp_all, fp_all, fn_all)
+            train_f1_macro = np.array(f1_macro_scores).mean()
+
+            return train_f1_micro, train_f1_macro
+
+        pred = sigmoid(train_data @ weights)
+        pred_labels = (pred > 0.5).astype(int)
+        train_f1_micro, train_f1_macro = f1(train_target, pred_labels, args.classes)
+
+        pred = sigmoid(test_data @ weights)
+        pred_labels = (pred > 0.5).astype(int)
+        test_f1_micro, test_f1_macro = f1(test_target, pred_labels, args.classes)
 
         print("After epoch {}: train F1 micro {:.2f}% macro {:.2f}%, test F1 micro {:.2f}% macro {:.1f}%".format(
             epoch + 1, 100 * train_f1_micro, 100 * train_f1_macro, 100 * test_f1_micro, 100 * test_f1_macro))
